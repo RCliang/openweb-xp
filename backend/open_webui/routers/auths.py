@@ -166,6 +166,100 @@ class SessionUserInfoResponse(SessionUserResponse, UserStatus):
     date_of_birth: Optional[datetime.date] = None
 
 
+############################
+# iframe 认证 - URL 参数传入用户信息
+############################
+
+
+class IframeAuthForm(BaseModel):
+    user: str  # 用户名
+    dept: Optional[str] = None  # 部门
+
+
+class IframeAuthResponse(SessionUserResponse):
+    department: Optional[str] = None
+
+
+@router.post("/iframe", response_model=IframeAuthResponse)
+async def iframe_auth(
+    request: Request,
+    response: Response,
+    form_data: IframeAuthForm,
+    db: Session = Depends(get_session),
+):
+    """
+    iframe 免登录认证接口。
+
+    通过 URL 参数传入用户名和部门，自动创建或获取用户，返回 token。
+    用法：主站 iframe src="https://ai.example.com?user=张三&dept=动力平台"
+    """
+    user_name = form_data.user.strip()
+    department = form_data.dept.strip() if form_data.dept else None
+
+    if not user_name:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="用户名不能为空",
+        )
+
+    # 生成唯一邮箱标识（基于用户名）
+    email = f"{user_name}@iframe.local"
+
+    # 查询是否已存在该用户
+    user = Users.get_user_by_email(email, db=db)
+
+    if not user:
+        # 自动创建用户
+        user_id = str(uuid.uuid4())
+        hashed_password = get_password_hash(str(uuid.uuid4()))  # 随机密码
+
+        try:
+            user = Auths.insert_new_auth(
+                email=email,
+                password=hashed_password,
+                name=user_name,
+                profile_image_url="/user.png",
+                role="user",
+                db=db,
+            )
+        except Exception as e:
+            log.error(f"iframe auth create user error: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="创建用户失败",
+            )
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="创建用户失败",
+            )
+
+        # 更新用户部门信息
+        if department:
+            Users.update_user_by_id(user.id, {"department": department}, db=db)
+
+        # 应用默认分组
+        apply_default_group_assignment(
+            request.app.state.config.DEFAULT_GROUP_ID,
+            user.id,
+            db=db,
+        )
+    else:
+        # 用户已存在，更新部门信息（如果提供了）
+        if department and getattr(user, 'department', None) != department:
+            Users.update_user_by_id(user.id, {"department": department}, db=db)
+
+    # 重新获取用户以获取最新信息
+    user = Users.get_user_by_id(user.id, db=db)
+
+    # 创建会话响应
+    session_data = create_session_response(request, user, db, response, set_cookie=True)
+    session_data["department"] = getattr(user, 'department', None)
+
+    return session_data
+
+
 @router.get("/", response_model=SessionUserInfoResponse)
 async def get_session_user(
     request: Request,

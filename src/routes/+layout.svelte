@@ -44,7 +44,7 @@
 	import 'tippy.js/dist/tippy.css';
 
 	import { executeToolServer, getBackendConfig, getVersion } from '$lib/apis';
-	import { getSessionUser, userSignOut } from '$lib/apis/auths';
+	import { getSessionUser, userSignOut, iframeAuth } from '$lib/apis/auths';
 	import { getAllTags, getChatList } from '$lib/apis/chats';
 	import { chatCompletion } from '$lib/apis/openai';
 
@@ -788,7 +788,29 @@
 				const currentUrl = `${window.location.pathname}${window.location.search}`;
 				const encodedUrl = encodeURIComponent(currentUrl);
 
-				if (localStorage.token) {
+				// 检查 iframe URL 参数认证
+				const urlParams = new URLSearchParams(window.location.search);
+				const iframeUser = urlParams.get('user');
+				const iframeDept = urlParams.get('dept');
+
+				if (iframeUser) {
+					// iframe 模式：通过 URL 参数认证
+					try {
+						const authResponse = await iframeAuth(iframeUser, iframeDept);
+						if (authResponse) {
+							localStorage.token = authResponse.token;
+							await user.set(authResponse);
+							try {
+								await config.set(await getBackendConfig());
+							} catch (error) {
+								console.error('Error refreshing backend config:', error);
+							}
+						}
+					} catch (error) {
+						console.error('iframe auth failed:', error);
+						toast.error(`认证失败: ${error}`);
+					}
+				} else if (localStorage.token) {
 					// Get Session User Info
 					const sessionUser = await getSessionUser(localStorage.token).catch((error) => {
 						toast.error(`${error}`);

@@ -1,5 +1,37 @@
 import { WEBUI_API_BASE_URL } from '$lib/constants';
 
+// iframe 认证 - 通过 URL 参数传入用户信息
+export const iframeAuth = async (user: string, dept: string | null = null) => {
+	let error = null;
+
+	const res = await fetch(`${WEBUI_API_BASE_URL}/auths/iframe`, {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json'
+		},
+		credentials: 'include',
+		body: JSON.stringify({
+			user: user,
+			dept: dept
+		})
+	})
+		.then(async (res) => {
+			if (!res.ok) throw await res.json();
+			return res.json();
+		})
+		.catch((err) => {
+			console.error(err);
+			error = err.detail || err;
+			return null;
+		});
+
+	if (error) {
+		throw error;
+	}
+
+	return res;
+};
+
 export const getAdminDetails = async (token: string) => {
 	let error = null;
 
