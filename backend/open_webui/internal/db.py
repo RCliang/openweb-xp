@@ -53,13 +53,8 @@ class JSONField(types.TypeDecorator):
 # Workaround to handle the peewee migration
 # This is required to ensure the peewee migration is handled before the alembic migration
 def handle_peewee_migration(DATABASE_URL):
-    db = None
+    # db = None
     try:
-        # Skip peewee migration for MySQL databases - use Alembic instead
-        if DATABASE_URL.startswith("mysql"):
-            log.info("MySQL database detected, skipping peewee migration (using Alembic)")
-            return
-
         # Replace the postgresql:// with postgres:// to handle the peewee migration
         db = register_connection(DATABASE_URL.replace("postgresql://", "postgres://"))
         migrate_dir = OPEN_WEBUI_DIR / "internal" / "migrations"
@@ -78,9 +73,8 @@ def handle_peewee_migration(DATABASE_URL):
         if db and not db.is_closed():
             db.close()
 
-        # Assert if db connection has been closed (only for non-MySQL)
-        if db is not None:
-            assert db.is_closed(), "Database connection is still open."
+        # Assert if db connection has been closed
+        assert db.is_closed(), "Database connection is still open."
 
 
 if ENABLE_DB_MIGRATIONS:
